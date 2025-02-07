@@ -1,182 +1,240 @@
+/**
+ * main.c - Projeto: Comunicação Serial com RP2040 e BitDogLab
+ *
+ * Funcionalidades:
+ *  - Recebe caracteres via UART/USB e os exibe no display SSD1306.
+ *  - Ao digitar um número (0-9), exibe o símbolo correspondente na matriz 5x5 de LEDs WS2812.
+ *  - Botão A: alterna o LED RGB Verde e registra a operação no display e no Serial Monitor.
+ *  - Botão B: alterna o LED RGB Azul e registra a operação no display e no Serial Monitor.
+ *  - Implementa interrupções e tratamento de debounce para os botões.
+ *
+ * Requisitos:
+ *  - Comunicação UART para entrada de caracteres.
+ *  - Comunicação I2C para o display SSD1306.
+ *  - Controle de LED WS2812 via PIO.
+ *  - Uso de interrupções para botões com debounce via software.
+ */
+
 #include <stdio.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
-#include "hardware/spi.h"
-#include "hardware/i2c.h"
-#include "hardware/dma.h"
 #include "hardware/pio.h"
-#include "hardware/interp.h"
-#include "hardware/timer.h"
-#include "hardware/watchdog.h"
-#include "hardware/clocks.h"
+#include "hardware/clocks.h"   // Necessário para clock_get_hz e CLOCKS_CLK_SYS
+#include "hardware/i2c.h"
 #include "hardware/uart.h"
 
-// SPI Defines
-// We are going to use SPI 0, and allocate it to the following GPIO pins
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define SPI_PORT spi0
-#define PIN_MISO 16
-#define PIN_CS   17
-#define PIN_SCK  18
-#define PIN_MOSI 19
+#include "pio_matrix.pio.h"            // Rotina PIO para a matriz WS2812
+#include "include/matriz_led_control.h" // Funções de controle da matriz WS2812
+#include "include/animacoesnumero.h"    // Padrões dos números 0-9
+#include "include/font.h"               // Font com caracteres (maiúsculas e minúsculas)
+#include "include/ssd1306.h"            // Biblioteca para o display SSD1306
 
-// I2C defines
-// This example will use I2C0 on GPIO8 (SDA) and GPIO9 (SCL) running at 400KHz.
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define I2C_PORT i2c0
-#define I2C_SDA 8
-#define I2C_SCL 9
+// ---------------------------------------------------------------------------
+// Definições de pinos e configurações
+// ---------------------------------------------------------------------------
+#define OUT_PIN       7    // Pino da matriz WS2812
+#define LED_G_PIN     12   // LED RGB – canal Verde
+#define LED_B_PIN     11   // LED RGB – canal Azul
+#define BUTTON_A      5    // Botão A
+#define BUTTON_B      6    // Botão B
+#define I2C_SDA       14   // Pino SDA do I2C
+#define I2C_SCL       15   // Pino SCL do I2C
 
-// Data will be copied from src to dst
-const char src[] = "Hello, world! (from DMA)";
-char dst[count_of(src)];
+#define UART_ID       uart0
+#define UART_TX_PIN   0
+#define UART_RX_PIN   1
 
-#include "blink.pio.h"
+#define DEBOUNCE_TIME 300000  // 300 ms (em microsegundos)
 
-void blink_pin_forever(PIO pio, uint sm, uint offset, uint pin, uint freq) {
-    blink_program_init(pio, sm, offset, pin);
-    pio_sm_set_enabled(pio, sm, true);
+// ---------------------------------------------------------------------------
+// Variáveis globais e flags de atualização
+// ---------------------------------------------------------------------------
+volatile int numero_atual = 0;                   // Número atual para a matriz WS2812
+static volatile uint32_t last_time_button_a = 0;   // Último acionamento do botão A
+static volatile uint32_t last_time_button_b = 0;   // Último acionamento do botão B
 
-    printf("Blinking pin %d at %d Hz\n", pin, freq);
+bool led_verde_estado = false;  // Estado do LED RGB Verde
+bool led_azul_estado  = false;  // Estado do LED RGB Azul
 
-    // PIO counter program takes 3 more cycles in total than we pass as
-    // input (wait for n + 1; mov; jmp)
-    pio->txf[sm] = (125000000 / (2 * freq)) - 3;
+ssd1306_t display;  // Estrutura de controle do display SSD1306
+
+// Estrutura para controle da matriz WS2812 via PIO
+pio_t meu_pio = {
+    .pio = pio0,
+    .ok  = false,
+    .i   = 0,
+    .r   = 0.0,
+    .g   = 0.0,
+    .b   = 0.0,
+    .sm  = 0
+};
+
+// Flags para atualização (usadas para evitar operações pesadas dentro das ISRs ou no loop)
+volatile bool flag_atualiza_display = false;
+volatile bool flag_atualiza_matriz  = false;
+volatile char uart_char = 0; // Último caractere recebido via UART/USB
+
+// ---------------------------------------------------------------------------
+// Funções Auxiliares
+// ---------------------------------------------------------------------------
+/**
+ * atualizar_matriz_led
+ * ---------------------
+ * Atualiza a matriz WS2812 com o padrão correspondente ao número atual.
+ */
+void atualizar_matriz_led() {
+    printf("Atualizando matriz para: %d\n", numero_atual);
+    switch (numero_atual) {
+        case 0: desenho_pio(numero0, &meu_pio); break;
+        case 1: desenho_pio(numero1, &meu_pio); break;
+        case 2: desenho_pio(numero2, &meu_pio); break;
+        case 3: desenho_pio(numero3, &meu_pio); break;
+        case 4: desenho_pio(numero4, &meu_pio); break;
+        case 5: desenho_pio(numero5, &meu_pio); break;
+        case 6: desenho_pio(numero6, &meu_pio); break;
+        case 7: desenho_pio(numero7, &meu_pio); break;
+        case 8: desenho_pio(numero8, &meu_pio); break;
+        case 9: desenho_pio(numero9, &meu_pio); break;
+        default: break;
+    }
 }
 
+/**
+ * processa_display
+ * ----------------
+ * Atualiza o display OLED exibindo em uma única tela:
+ *  - O caractere recebido via serial
+ *  - O número exibido na matriz (se for um dígito, esse número é atualizado)
+ *  - O status dos LEDs (Verde e Azul)
+ */
+void processa_display() {
+    ssd1306_fill(&display, 0);  // Limpa o buffer do display
+    char buf[50];
 
-int64_t alarm_callback(alarm_id_t id, void *user_data) {
-    // Put your timeout handler code in here
-    return 0;
+    // Exibe o caractere recebido (ou "-" se nenhum dado foi recebido)
+    if (uart_char != 0) {
+        snprintf(buf, sizeof(buf), "Serial: %c", uart_char);
+    } else {
+        snprintf(buf, sizeof(buf), "Serial: -");
+    }
+    ssd1306_draw_string(&display, buf, 0, 0);
+
+    // Exibe o número exibido na matriz (se o caractere for dígito, ele atualiza o número)
+    if (uart_char >= '0' && uart_char <= '9') {
+        snprintf(buf, sizeof(buf), "Matriz: %c", uart_char);
+    } else {
+        snprintf(buf, sizeof(buf), "Matriz: %d", numero_atual);
+    }
+    ssd1306_draw_string(&display, buf, 0, 16);
+
+    // Exibe o status dos LEDs
+    snprintf(buf, sizeof(buf), "LED Verde: %s", led_verde_estado ? "ON" : "OFF");
+    ssd1306_draw_string(&display, buf, 0, 32);
+    snprintf(buf, sizeof(buf), "LED Azul: %s", led_azul_estado ? "ON" : "OFF");
+    ssd1306_draw_string(&display, buf, 0, 48);
+
+    ssd1306_send_data(&display);
 }
 
+/**
+ * gpio_irq_handler
+ * ----------------
+ * Rotina de interrupção para os botões com debounce.
+ * Registra a mudança de estado e seta a flag para atualização do display.
+ */
+void gpio_irq_handler(uint gpio, uint32_t events) {
+    uint32_t current_time = to_us_since_boot(get_absolute_time());
 
+    if (gpio == BUTTON_A && (current_time - last_time_button_a > DEBOUNCE_TIME)) {
+        last_time_button_a = current_time;
+        led_verde_estado = !led_verde_estado;
+        gpio_put(LED_G_PIN, led_verde_estado);
+        printf("Botao A: LED Verde %s\n", led_verde_estado ? "Ligado" : "Desligado");
+        flag_atualiza_display = true;
+    }
+    else if (gpio == BUTTON_B && (current_time - last_time_button_b > DEBOUNCE_TIME)) {
+        last_time_button_b = current_time;
+        led_azul_estado = !led_azul_estado;
+        gpio_put(LED_B_PIN, led_azul_estado);
+        printf("Botao B: LED Azul %s\n", led_azul_estado ? "Ligado" : "Desligado");
+        flag_atualiza_display = true;
+    }
+}
 
-// UART defines
-// By default the stdout UART is `uart0`, so we will use the second one
-#define UART_ID uart1
-#define BAUD_RATE 115200
-
-// Use pins 4 and 5 for UART1
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define UART_TX_PIN 4
-#define UART_RX_PIN 5
-
-
-
-int main()
-{
+/**
+ * Função Principal
+ */
+int main() {
+    // Inicializa a saída serial (USB/STDIO) e outras interfaces
     stdio_init_all();
+    sleep_ms(2000);
+    printf("Iniciando programa...\n");
 
-    // SPI initialisation. This example will use SPI at 1MHz.
-    spi_init(SPI_PORT, 1000*1000);
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_CS,   GPIO_FUNC_SIO);
-    gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-    
-    // Chip select is active-low, so we'll initialise it to a driven-high state
-    gpio_set_dir(PIN_CS, GPIO_OUT);
-    gpio_put(PIN_CS, 1);
-    // For more examples of SPI use see https://github.com/raspberrypi/pico-examples/tree/master/spi
+    // Inicializa a matriz WS2812 via PIO e exibe o padrão inicial (número 0)
+    init_pio_routine(&meu_pio, OUT_PIN);
+    atualizar_matriz_led();
 
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400*1000);
-    
+    // Configura os pinos dos LEDs RGB como saída
+    gpio_init(LED_G_PIN);
+    gpio_set_dir(LED_G_PIN, GPIO_OUT);
+    gpio_init(LED_B_PIN);
+    gpio_set_dir(LED_B_PIN, GPIO_OUT);
+
+    // Inicializa a interface I2C para o display OLED usando i2c1
+    i2c_init(i2c1, 100 * 1000);
     gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
     gpio_pull_up(I2C_SDA);
     gpio_pull_up(I2C_SCL);
-    // For more examples of I2C use see https://github.com/raspberrypi/pico-examples/tree/master/i2c
 
-    // Get a free channel, panic() if there are none
-    int chan = dma_claim_unused_channel(true);
-    
-    // 8 bit transfers. Both read and write address increment after each
-    // transfer (each pointing to a location in src or dst respectively).
-    // No DREQ is selected, so the DMA transfers as fast as it can.
-    
-    dma_channel_config c = dma_channel_get_default_config(chan);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-    channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, true);
-    
-    dma_channel_configure(
-        chan,          // Channel to be configured
-        &c,            // The configuration we just created
-        dst,           // The initial write address
-        src,           // The initial read address
-        count_of(src), // Number of transfers; in this case each is 1 byte.
-        true           // Start immediately.
-    );
-    
-    // We could choose to go and do something else whilst the DMA is doing its
-    // thing. In this case the processor has nothing else to do, so we just
-    // wait for the DMA to finish.
-    dma_channel_wait_for_finish_blocking(chan);
-    
-    // The DMA has now copied our text from the transmit buffer (src) to the
-    // receive buffer (dst), so we can print it out from there.
-    puts(dst);
+    // Inicializa o display OLED (utilizando i2c1 como interface)
+    ssd1306_init(&display, 128, 64, false, 0x3C, i2c1);
+    ssd1306_config(&display);
+    ssd1306_fill(&display, 0);
+    ssd1306_draw_string(&display, "MINUSCULAS:", 0, 0);
+    ssd1306_draw_string(&display, "a b c d e f g h i j k l m n o p q r s t u v w x y z", 0, 16);
+    ssd1306_send_data(&display);
+    printf("Display inicializado.\n");
 
-    // PIO Blinking example
-    PIO pio = pio0;
-    uint offset = pio_add_program(pio, &blink_program);
-    printf("Loaded program at %d\n", offset);
-    
-    #ifdef PICO_DEFAULT_LED_PIN
-    blink_pin_forever(pio, 0, offset, PICO_DEFAULT_LED_PIN, 3);
-    #else
-    blink_pin_forever(pio, 0, offset, 6, 3);
-    #endif
-    // For more pio examples see https://github.com/raspberrypi/pico-examples/tree/master/pio
-
-    // Interpolator example code
-    interp_config cfg = interp_default_config();
-    // Now use the various interpolator library functions for your use case
-    // e.g. interp_config_clamp(&cfg, true);
-    //      interp_config_shift(&cfg, 2);
-    // Then set the config 
-    interp_set_config(interp0, 0, &cfg);
-    // For examples of interpolator use see https://github.com/raspberrypi/pico-examples/tree/master/interp
-
-    // Timer example code - This example fires off the callback after 2000ms
-    add_alarm_in_ms(2000, alarm_callback, NULL, false);
-    // For more examples of timer use see https://github.com/raspberrypi/pico-examples/tree/master/timer
-
-    // Watchdog example code
-    if (watchdog_caused_reboot()) {
-        printf("Rebooted by Watchdog!\n");
-        // Whatever action you may take if a watchdog caused a reboot
-    }
-    
-    // Enable the watchdog, requiring the watchdog to be updated every 100ms or the chip will reboot
-    // second arg is pause on debug which means the watchdog will pause when stepping through code
-    watchdog_enable(100, 1);
-    
-    // You need to call this function at least more often than the 100ms in the enable call to prevent a reboot
-    watchdog_update();
-
-    printf("System Clock Frequency is %d Hz\n", clock_get_hz(clk_sys));
-    printf("USB Clock Frequency is %d Hz\n", clock_get_hz(clk_usb));
-    // For more examples of clocks use see https://github.com/raspberrypi/pico-examples/tree/master/clocks
-
-    // Set up our UART
-    uart_init(UART_ID, BAUD_RATE);
-    // Set the TX and RX pins by using the function select on the GPIO
-    // Set datasheet for more information on function select
+    // Inicializa a UART para comunicação serial (usando polling via USB stdio)
+    uart_init(UART_ID, 115200);
     gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-    
-    // Use some the various UART functions to send out data
-    // In a default system, printf will also output via the default UART
-    
-    // Send out a string, with CR/LF conversions
-    uart_puts(UART_ID, " Hello, UART!\n");
-    
-    // For more examples of UART use see https://github.com/raspberrypi/pico-examples/tree/master/uart
 
+    // Configura os botões com pull-up interno
+    gpio_init(BUTTON_A);
+    gpio_set_dir(BUTTON_A, GPIO_IN);
+    gpio_pull_up(BUTTON_A);
+    gpio_init(BUTTON_B);
+    gpio_set_dir(BUTTON_B, GPIO_IN);
+    gpio_pull_up(BUTTON_B);
+
+    // Registra as interrupções para os botões (detecção na borda de descida)
+    gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+    gpio_set_irq_enabled_with_callback(BUTTON_B, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+
+    // Loop principal: verifica via polling se há caracteres recebidos e atualiza display/matriz conforme as flags
     while (true) {
-        printf("Hello, world!\n");
-        sleep_ms(1000);
+        int ch = getchar_timeout_us(10000);
+        if (ch != PICO_ERROR_TIMEOUT && ch != EOF) {
+            uart_char = (char)ch;
+            flag_atualiza_display = true;
+            if (uart_char >= '0' && uart_char <= '9') {
+                numero_atual = uart_char - '0';
+                flag_atualiza_matriz = true;
+            }
+        }
+        if (flag_atualiza_display) {
+            flag_atualiza_display = false;
+            processa_display();
+            uart_char = 0;  // Limpa o caractere para evitar reprocessamento
+        }
+        if (flag_atualiza_matriz) {
+            flag_atualiza_matriz = false;
+            atualizar_matriz_led();
+        }
+        tight_loop_contents();
     }
+    
+    return 0;
 }
