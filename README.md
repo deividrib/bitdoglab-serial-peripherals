@@ -1,43 +1,70 @@
-# 📡 Comunicação Serial com RP2040 e BitDogLab  
+# Projeto de Comunicação Serial com RP2040 e BitDogLab
 
-Este projeto implementa um sistema interativo utilizando a placa **RP2040 BitDogLab**, explorando **interfaces de comunicação serial (UART e I2C)**, **interrupções**, **debounce** e **controle de LEDs WS2812**.  
+Este projeto demonstra a integração de diversas interfaces de comunicação e controle de hardware utilizando o microcontrolador RP2040 e a placa BitDogLab. O sistema utiliza UART, I2C, controle via PIO de uma matriz de LEDs WS2812, display SSD1306 e botões com tratamento de interrupções e debounce.
 
-## 🎯 **Objetivos**  
-✅ Receber caracteres via **UART** e exibi-los no **display SSD1306 (I2C)**  
-✅ Exibir números na **matriz de LEDs WS2812 (5x5)** ao receber um dígito (0-9)  
-✅ Alternar **LEDs RGB** com botões físicos (usando interrupções e debounce)  
-✅ Exibir informações do sistema no **Serial Monitor** e no **display OLED**  
+## Funcionalidades
 
-## 🛠 **Componentes Utilizados**  
-- **RP2040 BitDogLab**  
-- **Matriz de LEDs WS2812 (5x5)** – GPIO 7  
-- **Display SSD1306 (I2C)** – GPIO 14 (SDA) e GPIO 15 (SCL)  
-- **LED RGB** – GPIO 11 (Azul) e GPIO 12 (Verde)  
-- **Botões**  
-  - Botão A – GPIO 5 (Alterna LED Verde)  
-  - Botão B – GPIO 6 (Alterna LED Azul)  
+- **Comunicação UART:**  
+  Recebe caracteres via UART/USB e exibe-os no display SSD1306.
 
-## ⚙ **Funcionamento**  
+- **Matriz WS2812:**  
+  Ao receber um número (0-9) via UART, exibe um padrão correspondente na matriz 5x5 de LEDs.
 
-### 1️⃣ **Entrada de Caracteres via UART**  
-- O usuário digita um **caractere no Serial Monitor** (VS Code, PuTTY, etc.).  
-- O caractere recebido é exibido no **display SSD1306**.  
-- Se for um número (0-9), a **matriz de LEDs WS2812** exibe um padrão correspondente.  
+- **Display SSD1306 (I2C):**  
+  Exibe:
+  - O caractere recebido via UART.
+  - O número (ou símbolo) exibido na matriz WS2812.
+  - O estado dos LEDs RGB.
 
-### 2️⃣ **Interação com Botões**  
-- **Botão A (GPIO 5):** Liga/desliga o **LED Verde** e exibe uma mensagem no display e Serial Monitor.  
-- **Botão B (GPIO 6):** Liga/desliga o **LED Azul** e exibe uma mensagem no display e Serial Monitor.  
-- O **debounce** é tratado via software para evitar leituras falsas.  
+- **Botões com Interrupções e Debounce:**  
+  - **Botão A (GPIO 5):** Alterna o LED RGB Verde e atualiza o display e o Serial Monitor.
+  - **Botão B (GPIO 6):** Alterna o LED RGB Azul e atualiza o display e o Serial Monitor.
 
-### 3️⃣ **Exibição no Display SSD1306**  
-- O display exibe:  
-  - O último caractere recebido via UART  
-  - O número exibido na matriz de LEDs  
-  - O status dos LEDs Verde e Azul  
+- **Adição de Caracteres Minúsculos:**  
+  A biblioteca `font.h` foi modificada para incluir caracteres minúsculos, permitindo a exibição de fontes completas no display.
 
-## 🔧 **Como Executar**  
+## Requisitos de Hardware
 
-### 📥 **1. Clonar o Repositório**  
-```sh
-git clone https://github.com/seuusuario/projeto-rp2040-bitdoglab.git
-cd projeto-rp2040-bitdoglab
+- **Placa:** RP2040 / BitDogLab
+- **Matriz de LEDs WS2812 (endereçáveis):** Conectada à GPIO 7
+- **LED RGB:**  
+  - Verde: GPIO 11  
+  - Azul: GPIO 12 (ou GPIO 13, conforme sua implementação)
+- **Botões:**  
+  - Botão A: GPIO 5  
+  - Botão B: GPIO 6
+- **Display SSD1306:** Conectado via I2C (GPIO 14 e GPIO 15)
+
+## Requisitos de Software
+
+- SDK do Raspberry Pi Pico (RP2040)
+- Bibliotecas para controle de UART, I2C, display SSD1306 e PIO para a matriz WS2812
+- Compilador compatível com C/C++
+
+## Estrutura do Projeto
+
+├── main.c # Código-fonte principal do projeto ├── include │ ├── font.h # Biblioteca de fontes (inclui caracteres minúsculos) │ ├── ssd1306.h # Biblioteca para o display OLED SSD1306 │ ├── matriz_led_control.h # Funções de controle da matriz WS2812 │ └── animacoesnumero.h # Padrões dos números 0-9 para a matriz ├── pio_matrix.pio # Código PIO para controle da matriz WS2812 └── README.md # Este arquivo
+
+
+## Vídeo de Demonstração
+
+-https://www.youtube.com/shorts/mJDqeERANdk
+
+## Considerações Finais
+
+Este projeto integra diversas técnicas de comunicação e controle em microcontroladores, proporcionando uma excelente oportunidade para aprender sobre:
+
+-**Comunicação UART e I2C;**
+-**Controle de LEDs comuns e endereçáveis (WS2812);**
+-**Uso de interrupções e tratamento de debounce;**
+-**Manipulação de displays OLED com fontes customizadas.**
+
+## Autor
+
+**Deividson Ribeiro Silva**
+
+
+
+
+
+
