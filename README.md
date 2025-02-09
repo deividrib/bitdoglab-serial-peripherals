@@ -47,7 +47,7 @@ Este projeto demonstra a integração de diversas interfaces de comunicação e 
 .
 ├── main.c                      # Código-fonte principal do projeto
 ├── include
-│   ├── font.h                  # Biblioteca de fontes (inclui caracteres minúsculos)
+│   ├── font.h                  # Biblioteca de fontes (inclui caracteres)
 │   ├── ssd1306.h               # Biblioteca para o display OLED SSD1306
 │   ├── matriz_led_control.h    # Funções de controle da matriz WS2812
 │   └── animacoesnumero.h       # Padrões dos números 0-9 para a matriz
