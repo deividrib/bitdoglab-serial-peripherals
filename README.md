@@ -43,7 +43,17 @@ Este projeto demonstra a integração de diversas interfaces de comunicação e 
 
 ## Estrutura do Projeto
 
-├── main.c # Código-fonte principal do projeto ├── include │ ├── font.h # Biblioteca de fontes (inclui caracteres minúsculos) │ ├── ssd1306.h # Biblioteca para o display OLED SSD1306 │ ├── matriz_led_control.h # Funções de controle da matriz WS2812 │ └── animacoesnumero.h # Padrões dos números 0-9 para a matriz ├── pio_matrix.pio # Código PIO para controle da matriz WS2812 └── README.md # Este arquivo
+```plaintext
+.
+├── main.c                      # Código-fonte principal do projeto
+├── include
+│   ├── font.h                  # Biblioteca de fontes (inclui caracteres minúsculos)
+│   ├── ssd1306.h               # Biblioteca para o display OLED SSD1306
+│   ├── matriz_led_control.h    # Funções de controle da matriz WS2812
+│   └── animacoesnumero.h       # Padrões dos números 0-9 para a matriz
+├── pio_matrix.pio              # Código PIO para controle da matriz WS2812
+└── README.md                   # Este arquivo
+
 
 
 ## Vídeo de Demonstração
