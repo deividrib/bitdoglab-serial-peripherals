@@ -1,4 +1,0 @@
-[wokwi]
-version = 1
-firmware = 'build/bitdoglab-serial-peripherals.uf2'
-elf = 'build/bitdoglab-serial-peripherals.elf'

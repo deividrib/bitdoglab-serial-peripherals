@@ -33,8 +33,8 @@
 // Definições de pinos e configurações
 // ---------------------------------------------------------------------------
 #define OUT_PIN       7    // Pino da matriz WS2812
-#define LED_G_PIN     12   // LED RGB – canal Verde
-#define LED_B_PIN     11   // LED RGB – canal Azul
+#define LED_G_PIN     11   // LED RGB – canal Verde
+#define LED_B_PIN     12   // LED RGB – canal Azul
 #define BUTTON_A      5    // Botão A
 #define BUTTON_B      6    // Botão B
 #define I2C_SDA       14   // Pino SDA do I2C
