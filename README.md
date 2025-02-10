@@ -53,6 +53,7 @@ Este projeto demonstra a integração de diversas interfaces de comunicação e 
 │   └── animacoesnumero.h       # Padrões dos números 0-9 para a matriz
 ├── pio_matrix.pio              # Código PIO para controle da matriz WS2812
 └── README.md                   # Este arquivo
+```
 
 ## Vídeo de Demonstração
 
