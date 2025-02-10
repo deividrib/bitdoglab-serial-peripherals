@@ -63,10 +63,10 @@ Este projeto demonstra a integração de diversas interfaces de comunicação e 
 
 Este projeto integra diversas técnicas de comunicação e controle em microcontroladores, proporcionando uma excelente oportunidade para aprender sobre:
 
--**Comunicação UART e I2C;**
--**Controle de LEDs comuns e endereçáveis (WS2812);**
--**Uso de interrupções e tratamento de debounce;**
--**Manipulação de displays OLED com fontes customizadas.**
+- **Comunicação UART e I2C;**
+- **Controle de LEDs comuns e endereçáveis (WS2812);**
+- **Uso de interrupções e tratamento de debounce;**
+- **Manipulação de displays OLED com fontes customizadas.**
 
 ## Autor
 
