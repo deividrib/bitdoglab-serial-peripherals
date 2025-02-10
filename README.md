@@ -54,8 +54,6 @@ Este projeto demonstra a integração de diversas interfaces de comunicação e 
 ├── pio_matrix.pio              # Código PIO para controle da matriz WS2812
 └── README.md                   # Este arquivo
 
-
-
 ## Vídeo de Demonstração
 
 -https://www.youtube.com/shorts/mJDqeERANdk
